@@ -267,3 +267,7 @@ class PremUserInfoUpdatePD(BaseModel):
     }
 ```
 1) Now all of these are optionl to submit an update for...
+
+## Freezing our requirements with Pipenv 
+
+`pipenv requirements > requirements.txt`
