@@ -1,3 +1,5 @@
 **.db 
 Pipfile 
 Pipfile.lock
+app/jobbuddy-vertex-cred.json
+.env

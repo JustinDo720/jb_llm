@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Generator 
 from app.db.database import SessionLocal
 from app.db.models import PremUserInfo
+from typing import Optional, Dict, Any
 
 # Set up our router for better scaling 
 router = APIRouter() 
@@ -20,6 +21,18 @@ class PremUserInfoPD(BaseModel):
     headline: str
     yrs_exp: int
 
+    model_config = {
+        'from_attributes': True
+    }
+
+class PremUserInfoUpdatePD(BaseModel):
+    job_title: Optional[str] = None
+    headline: Optional[str] = None 
+    yrs_exp: Optional[int] = None
+
+    model_config = {
+        'from_attributes': True
+    }
 
 # Get the database to inject into our router 
 def get_db() -> Generator: 
@@ -44,3 +57,44 @@ def store_prem_user(user_info: PremUserInfoPD, db: Session = Depends(get_db)):
         'message': 'Receieved',
         'data': new_user_info
     }
+
+@router.get('/user-info')
+def get_prem_user(user_id: Optional[int]=None, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    try:
+        if user_id is not None:
+            user = db.query(PremUserInfo).filter(PremUserInfo.user_id == user_id).first()
+            return {
+                'prem_user_info': PremUserInfoPD.model_validate(user)
+            }
+        else: 
+            info = db.query(PremUserInfo).all()
+            return {
+                'prem_user_info': [PremUserInfoPD.model_validate(inf) for inf in info]
+            }
+    except Exception as e:
+        return {
+            'msg': str(e)
+        }
+    
+@router.put('/user-info/{user_id}')
+def update_prem_user(user_id:int, new_info:PremUserInfoUpdatePD, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    try:
+        user = db.query(PremUserInfo).filter(PremUserInfo.user_id == user_id).first()
+        
+        # We wanna perform patch with set_attribute 
+        for key, val in new_info.model_dump(exclude_unset=True).items():
+            if val is not None:
+                setattr(user, key, val)
+
+        # Updating in our database 
+        db.commit()
+        db.refresh(user)
+
+        return {
+            'prem_user_info': PremUserInfoPD.model_validate(user)
+        }
+
+    except Exception as e:
+        return {
+            'msg': str(e)
+        }

@@ -148,3 +148,122 @@ def store_prem_user(user_info: PremUserInfoPD, db: Session = Depends(get_db)):
 2) Using `Depends` and `Session` we could fit this into our API function
 3) We use `model_dump()` because `**user_info` is still a pydantic object not a dictionary
 4) We add, commit then refresh using our `db`
+
+## Set up Vertex AI
+
+IN GCP we create a new **service account** then we copy the name of it something like:
+
+`name-acc@jobbuddy-458908.iam.gserviceaccount.com`
+
+Then we create an **IAM** policy with this name
+1) Add: Vertex AI 
+2) Add: Vertex User 
+
+**Generate JSON Key** 
+- Service Acc 
+- Keys 
+- Generate JSON file
+
+Vertex SDK
+`pipenv install google-cloud-aiplatform`
+
+**IMPORTANT NOTE:**
+- Bert Palm (Text Chat Bison) is deprecated 
+- We switched over to a **Gemini** model: `gemini-2.0-flash-lite-001`
+- If confused look at the [video](https://www.youtube.com/watch?v=I8W-4oq1onY) again
+
+*routers/gen_quest.py*
+```py
+from vertexai.preview.generative_models import GenerativeModel
+import vertexai
+# pipenv install python-dotenv
+import dotenv
+
+# Loading up our .env file 
+dotenv.load_dotenv()
+
+# Setting up our authentication 
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('CREDENTIALS')
+vertexai.init(project=os.getenv('PROJECT_ID'), location='us-central1')
+
+# We no longer use Bert or Palm (text/chat bison) so no need to use predit() instead we use gemini-pro
+model = GenerativeModel('gemini-2.0-flash-lite-001')
+```
+1) We set the `CREDENTIALS` environmental varaible to a path to our json key file for the secured user 
+2) then we use the GenerativeModel with the lastest flash-lite
+
+
+Now all we need to do is **generate** a response:
+
+```py
+prompt = 'Say hi'
+res = model.generate_content(prompt)
+```
+1) Fit this logic into our Generate Interview Questions API
+
+## Structure 
+
+When these questions are generated we purposefully asked for our questions to be **delimited** by `|` so we could split and return a list of questions 
+
+These questions are stored
+1) `JobInterviewQuestion` model 
+2) With `job_id` and `user_id`
+
+We've set up a Pandantic to then **serialize** the questions from our database:
+
+```py
+class Questions(BaseModel):
+    user_id: int 
+    job_id: int
+    questions: str
+
+    model_config = {
+        # Since orm=True is deprecaited...
+        'from_attributes': True
+    }
+
+# Logic using Pandantic
+all_user_jobs_quest =  db.query(JobInterviewQuestion).filter(JobInterviewQuestion.user_id == user_id).all()
+return {
+    'questions': [Questions.model_validate(quest) for quest in all_user_jobs_quest]
+}
+```
+
+But when we set up our path `user_id` is optional using the `Optional` from **typing**
+
+```py
+from sqlalchemy.orm import Session
+from typing import Optional, Dict, Any
+
+@router.get('/all-quest')
+def get_user_questions(user_id: Optional[int] = None, db:Session = Depends(inject_db)) -> Dict[str, Any]:
+    pass 
+```
+
+## Updating 
+
+Remember we were using `setattr()` to perform something similar to PATCH 
+
+```py
+for key, val in new_info.model_dump(exclude_unset=True).items():
+    if val is not None:
+        setattr(user, key, val)
+```
+1) But now with *exclude_unset=True* we don't necessarily need to check if Val is null.
+
+Because we're following the PATCH format, this conflicts with our **Pydantic** model which requires all the fields. So we made a seperate one...
+
+```py
+from pydantic import BaseModel
+from typing import Optional 
+
+class PremUserInfoUpdatePD(BaseModel):
+    job_title: Optional[str] = None
+    headline: Optional[str] = None 
+    yrs_exp: Optional[int] = None
+
+    model_config = {
+        'from_attributes': True
+    }
+```
+1) Now all of these are optionl to submit an update for...

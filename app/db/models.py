@@ -10,3 +10,11 @@ class PremUserInfo(Base):
     job_title = Column(String)
     yrs_exp = Column(Integer)
     headline = Column(String)
+
+class JobInterviewQuestion(Base):
+    __tablename__ = 'job_interview_question'
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    job_id = Column(Integer, index=True)
+    questions = Column(String)
