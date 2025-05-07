@@ -1,5 +1,5 @@
 from .database import Base
-from sqlalchemy import Column, Integer, String 
+from sqlalchemy import Column, Integer, String, Text
 
 class PremUserInfo(Base):
     # In FastAPI we need to make sure we have a table name 
@@ -10,6 +10,7 @@ class PremUserInfo(Base):
     job_title = Column(String)
     yrs_exp = Column(Integer)
     headline = Column(String)
+    resume_txt = Column(Text)
 
 class JobInterviewQuestion(Base):
     __tablename__ = 'job_interview_question'
