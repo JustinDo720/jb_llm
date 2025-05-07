@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Generator 
 from app.db.database import SessionLocal
 from app.db.models import PremUserInfo
+from app.utils.nltk_clean import clean_txt
 from typing import Optional, Dict, Any
+from docx import Document
+from io import BytesIO
 
 # Set up our router for better scaling 
 router = APIRouter() 
@@ -57,6 +60,29 @@ def store_prem_user(user_info: PremUserInfoPD, db: Session = Depends(get_db)):
         'message': 'Receieved',
         'data': new_user_info
     }
+
+@router.post('/submit-resume/{user_id}')
+async def store_prem_user_resume(user_id: int, resume: UploadFile = File(...), db: Session = Depends(get_db)):
+
+    user = db.query(PremUserInfo).filter(PremUserInfo.user_id == user_id).first()
+    if user: 
+        # Read the content first before passing into Document 
+        content = await resume.read()
+
+        # Convert into bytes for python-docx to read 
+        doc = Document(BytesIO(content))
+        resume_txt = ''
+
+        for p in doc.paragraphs:
+            resume_txt += p.text + '\n'
+        
+        # Update our user's resume_txt field 
+        user.resume_txt = clean_txt(resume_txt)
+        db.commit() 
+        db.refresh(user)
+        return {
+            'resume_txt': user.resume_txt
+        }
 
 @router.get('/user-info')
 def get_prem_user(user_id: Optional[int]=None, db: Session = Depends(get_db)) -> Dict[str, Any]:

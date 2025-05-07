@@ -271,3 +271,201 @@ class PremUserInfoUpdatePD(BaseModel):
 ## Freezing our requirements with Pipenv 
 
 `pipenv requirements > requirements.txt`
+
+## 5.7 Plans 
+
+- [x] Restrict our AI from running if there's already generated Questions 
+- [x] Build out our similarity API 
+  - `pipenv install python-docx`
+  - We need to have our users upload their resume because we'll return the cosine simialrity based on their entire portfoilio 
+  - `pipenv install python-multipart`
+  - Convert the `UploadFile` into bytes using `BytesIO` then let `python-docx` read the binary content
+  - We may need to use nltk to remove **stopwords** and **punciation** before we send these texts for our prmopt
+    - `pipenv install nltk`
+- [x] Ready for React Testing 
+
+
+### End-to-End Similarity API 
+
+**Overview:**
+
+We want achieve a json response the tells us the **text** simialrity between the user's resume with the job description they're providing
+
+Final json Response:
+```json
+{
+  "similarity_score": 0.71485,
+  "similarity_percentage": 71.48
+}
+```
+
+**Creating a Util Function** to clean up the text that we'll eventually grab from the resume `.docx` file.
+- we use **NLTK** [(Natural Language Tool Kit)](https://www.nltk.org/index.html) for this purpose
+- `pipenv install nltk`
+
+*utils/nltk_clean.py*
+```py
+from nltk.corpus import stopwords
+import string
+```
+
+**Removing Punctuations**
+```py
+# Looping through characters
+no_punc = [txt for txt in text if txt not in string.punctuation]
+no_punc = ''.join(no_punc)
+```
+1) Make sure we join back to get a **string of words**
+
+**Corpus stopwords** 
+```py
+stop_words_set = set(stopwords.words('english'))
+no_stop_words = [wrd for wrd in no_punc.split() if wrd.lower() not in stop_words_set] 
+```
+1) grab the list of stop words 
+2) filter out `no_punc.split()` for words that aren't inside the **stop words** list 
+
+
+**Handling File Uploads** 
+
+In **FastAPI** we accept handle uploads from our views with `UploadFile` and `File`
+
+*routers/prem_user_info.py*
+```py
+from fastapi import APIRouter, Depends, UploadFile, File
+
+router = APIRouter() 
+
+@router.post('/submit-resume/{user_id}')
+async def store_prem_user_resume(user_id: int, resume: UploadFile = File(...), db: Session = Depends(get_db)):
+    pass
+```
+1) Set up your router and endpoint 
+2) `resume: UploadFile = File(...)` creates that file upload field in `docs` 
+
+Now we need to read `docx` files (resume file format)
+- `pipenv install python-multipart; python-docx`
+- We also need multipart to handle the file uploads 
+
+*routers/prem_user_info.py*
+```py
+from io import BytesIO
+from docx import Document
+
+@router.post('/submit-resume/{user_id}')
+async def store_prem_user_resume(user_id: int, resume: UploadFile = File(...), db: Session = Depends(get_db)):
+    # Await reading 
+    context = await resume.read() 
+
+    # Passing into the Document class in byte format 
+    resume = Document(BytesIO(context))
+    resume_txt = ''
+
+    # Looping through the paragraphs 
+    for para in resume.paragraphs:
+        resume_txt += para.text + '\n'
+```
+
+**Clean Util** + **Database Update** 
+
+*routers/prem_user_info.py*
+```py
+from app.utils.nltk_clean import clean_txt
+
+user.resume_txt = clean_txt(resume_txt)
+db.commit() 
+db.refresh(user)
+```
+
+**Importing NLTK** 
+
+In order for our app to use clean_txt we need to download `stopwords` in the **main.py** 
+
+*app/main.py*
+```py
+import nltk
+
+# Download the stopwords for our utility clean text function 
+nltk.download('stopwords') 
+```
+1) This way we could download once and use throughout the routers...
+
+**VertexAI** to generate **Cosine Similarity**
+
+*routers/cos_sim*
+```py
+from vertexai.preview.generative_models import GenerativeModel
+import vertexai
+import dotenv
+
+dotenv.load_dotenv()
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('CREDENTIALS')
+vertexai.init(project=os.getenv('PROJECT_ID'), location='us-central1')
+
+model = GenerativeModel('gemini-2.0-flash-lite-001')
+```
+1) Setting up the Gen model and credietials to use **GCP**
+
+
+**Pydantic** model to handle job description and title
+```py
+from pydantic import BaseModel
+
+class JobPD(BaseModel):
+    job_title: str
+    job_desc: str
+```
+
+**Set up your routers** then we use `clean_txt` utils
+
+```py
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from app.utils.nltk_clean import clean_txt
+
+router = APIRouter() 
+
+def get_db(): 
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        # Close out the connection to prevent memeory leakage 
+        db.close()
+
+@router.post('/gen-cos-sim/{user_id}')
+def generate_cosine_similarity(user_id: int, job_info: JobPD, db: Session=Depends(inject_db)):
+    user = db.query(PremUserInfo).filter(PremUserInfo.user_id == user_id).first()
+    # Cleaning our one-liner job description provided by React Frontend: `.replace(/\n/g, '')`
+    job_desc_cleaned = clean_txt(job_info.job_desc)
+
+    prompt = (
+        "Compute the cosine similarity between the semantic meanings of the following two texts by generating embeddings for each. "
+        "Perform the calculation 3 separate times, then return only the average of the 3 similarity scores as a float between 0 and 1. "
+        "Do not return intermediate results. Do not include any extra text or newline characters. Only return the final average on a single line.\n\n"
+        f"Resume: {resume_txt}\n"
+        f"Job Description: {job_desc_cleaned}"
+    )
+    response = model.generate_content(prompt)
+```
+
+Now we **manipulate** the response text and return the information 
+
+```py
+response = model.generate_content(prompt)
+sim_score = response.text
+
+if '\n' in sim_score:
+    sim_score = sim_score.replace('\n', '')
+
+# Regardless of if condition we'll convert into float 
+sim_score = float(sim_score)
+
+return {
+    'similarity_score': sim_score,
+    'similarity_percentage': round(sim_score*100, 2)
+}
+```
+1) We want to change it into a float and there's a chance where we have `\n` in the final result from Vertex AI 
+2) Remember the higher the score the better (from 0-1)
+

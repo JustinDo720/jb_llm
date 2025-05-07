@@ -48,7 +48,11 @@ def inject_db() -> Generator:
 def generate_questions(user_id:int, extra_details:GenQ, db: Session=Depends(inject_db)) -> Dict[str, Any]:
     try:
         user_info = db.query(PremUserInfo).filter(PremUserInfo.user_id == user_id).first()
-        if user_info:
+        # Make sure we're looking for the exact job_id from that user
+        user_existing_job = db.query(JobInterviewQuestion).filter(JobInterviewQuestion.job_id == extra_details.job_id, JobInterviewQuestion.user_id == user_id)
+
+        # Make sure the user exists and the requested job doesn't have questions already 
+        if user_info and user_existing_job.count() == 0:
             job_description = extra_details.job_desc
             prompt = (
                 f"You are a recruiter evaluating candidates for the following job description: {job_description}. "
@@ -73,7 +77,7 @@ def generate_questions(user_id:int, extra_details:GenQ, db: Session=Depends(inje
                 'questions': questions
             }
         return {
-            'msg': 'No User Found!'
+            'msg': 'No User Found or Interview Questions Already Generated!'
         }
     except Exception as e:
         return {
