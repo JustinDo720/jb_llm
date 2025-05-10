@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends
 import os
 from vertexai.preview.generative_models import GenerativeModel
-from app.db.models import PremUserInfo
 from app.db.database import SessionLocal
 import vertexai
 import dotenv
@@ -9,7 +8,8 @@ from typing import Generator, Dict, Any
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.utils.nltk_clean import clean_txt
-
+import requests
+from app.utils.jb_url import JB_BACKEND
 
 router = APIRouter()
 
@@ -30,18 +30,18 @@ def inject_db() -> Generator:
         db.close()
 
 class JobPD(BaseModel):
-    job_title: str
     job_desc: str
 
 @router.post('/gen-cos-sim/{user_id}')
 def generate_cosine_similarity(user_id: int, job_info: JobPD, db: Session=Depends(inject_db)):
     # Pull the resume text based on our user 
-    user = db.query(PremUserInfo).filter(PremUserInfo.user_id == user_id).first()
-    if user:
-        resume_txt = user.resume_txt
+    try:
+        resp = requests.get(f'{JB_BACKEND}/users/profiles/{user_id}/')
+        resp.raise_for_status()
 
-        # Now we need to clean out the job description 
-        job_title_cleaned = clean_txt(job_info.job_title)
+        user = resp.json()
+
+        resume_txt = user.resume_txt
         # Remember our frontend takes care of putting everything in oneliner: `.replace(/\n/g, '')`
         job_desc_cleaned = clean_txt(job_info.job_desc)
 
@@ -66,4 +66,9 @@ def generate_cosine_similarity(user_id: int, job_info: JobPD, db: Session=Depend
         return {
             'similarity_score': sim_score,
             'similarity_percentage': round(sim_score*100, 2)
+        }
+
+    except Exception as e:
+        return {
+            'err': str(e)
         }
