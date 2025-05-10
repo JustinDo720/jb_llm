@@ -469,3 +469,134 @@ return {
 1) We want to change it into a float and there's a chance where we have `\n` in the final result from Vertex AI 
 2) Remember the higher the score the better (from 0-1)
 
+## 5.8 Plans 
+
+Corsheaders 
+
+Conencting React to Build profile 
+
+Enabling AI usage with React
+
+Remember to **lock** features if they haven't provided additional information for AI Usage...
+
+Generate Interview Q needs a job description so we'll use job summary if exists else we must ask the user to provide then generate
+- set read only if we do have a job summary 
+
+## 5.9 Plans 
+
+We have to switch questions from string to a list for our frontend to display:
+
+```py
+all_user_jobs_quest =  db.query(JobInterviewQuestion).filter(JobInterviewQuestion.user_id == user_id).all()
+return {
+    'questions': [
+        {
+            # We'll keep all the details from questions
+            **Questions.model_validate(quest).model_dump(),
+            # Then we'll spilt all of our questions (currently in str format) into a list 
+            'questions': [q.strip() for q in quest.questions.split('|')]
+        }
+        for quest in all_user_jobs_quest
+    ]
+}
+```
+1) We use `model_validate` with `model_dump()` to clean our obj for json response then unpackin our return 
+2) We add a seperate field for **questions** where we transform our string to a list of questions
+
+Be sure to add our main domain to CORSHEADERS
+Issue: Cold start ups 
+- Our Frotnend relies too much on user premium information so we need to put prem status and information on our backend instead...
+- Make sure we add fastapi ml microservice to corsheaders in django  
+
+### Restructuring 
+
+We'll use syncronous communcation via:
+
+`pipenv install requests`
+
+*routers/cos_sim.py*
+```py
+try:
+    resp = requests.get(f'{JB_BACKEND}/users/profiles/{user_id}/')
+    resp.raise_for_status()
+
+    user = resp.json()
+
+    resume_txt = user.resume_txt
+except Exception as e:
+    print(str(e))
+```
+1) Instead of using our FastAPI Database to query user info, we send a get request to the profile in Django backend
+2) Always **raise for status** to see if there are any issues 
+3) Change into **json** format before accessing the data / response 
+4) Wrap in a **try except** to handle errors 
+
+### Issue with Premium not updating 
+
+After filling out the premium form there may be some issue not the premium feature not being available right away 
+- This is because we need to use **Redux** 
+
+*prem_filled_action.js*
+```js 
+export const SET_PREM_FILL = 'SET_PREM_FILL'
+
+export const setPremFill = (data) =>{
+
+    localStorage.setItem('prem_filled', data.prem_filled)
+
+    return {
+        type: SET_PREM_FILL,
+        payload: {
+            prem_filled: data.prem_filled
+        }
+    }
+}
+```
+
+Then make a reducer 
+*prem_filled_reducer.js*
+```js
+import { SET_PREM_FILL } from "./prem_filled_action";
+
+const initialStore = {
+    prem_filled: localStorage.getItem('prem_filled') === 'true' || null
+}
+
+export const premFillReducer = (state=initialStore, action) => {
+    switch(action.type){
+        case SET_PREM_FILL:
+            return {
+                ...state,
+                prem_filled: action.payload.prem_filled
+            }
+        default:
+            return state 
+    }
+}
+```
+
+Now we dispatch upon login 
+
+*Login.js*
+```js
+dispatch(setPremFill({
+    prem_filled: rep.data.job_title !== null
+}))
+```
+
+Then we do the same when submitting the premium information 
+*Profile.js*
+```js
+const updateParentPremium = ()=>{
+    console.log('I got here')
+    localStorage.setItem('prem_filled', JSON.stringify('true'))
+    dispatch(setPremFill({prem_filled: 'true'}))
+}
+```
+
+Once we dispatch we should be good to go...
+- [x] Transition User Premium Information to Django 
+  - Prevents cold start up if we're calling for premium details 
+  - Removed PremUser model in FastAPI and ported to Django 
+- [x] Listed / Generated Interview Questions 
+- [x] Protected Premium Tab (If filled prem details)
