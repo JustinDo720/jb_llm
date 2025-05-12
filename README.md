@@ -600,3 +600,111 @@ Once we dispatch we should be good to go...
   - Removed PremUser model in FastAPI and ported to Django 
 - [x] Listed / Generated Interview Questions 
 - [x] Protected Premium Tab (If filled prem details)
+
+## 5.10 Plans 
+
+We'll only need resume if generate text simialrity 
+- Upload resume to FASTAPI endpoint 
+- Uses it to compare with with jbo description 
+- Then uploads to DJango Restframework (the text)
+
+## 5.11 Plans 
+
+Create an FastAPI endpoint for resume upload... 
+- Dont save the file but rather update user resume txt in django 
+- once this exists we could run our gen cos api 
+- MAke sure you run your pipenv server or else the google clinet wont connect 
+- We'll be sending resume_txt as a response no longer retreiving from profile 
+  - no need to save resume at the moment 
+- Jobs now have a field for job sim score to save sim score to prevent continous generations 
+- Updated the google vertex ai prompt 
+  - try except block on float in case our ai fails...
+
+## 5.12 Plans 
+
+Port over code to use Django Restframework for job interview questions 
+- We won't deploy sqlalchemy because we're using cloud run 
+- Cloud run will refresh db instance (only used to read not write perm)
+  - We don't want to pay for another database instance so ~~we'll store it in the backend **MySQL** railway database ~~
+
+Using **Render.com** we'll create a free **Postgresql** database but handle **connection pooling** 
+- It's a free 1GB which is enough for a microservice like this 
+
+Dockerizing:
+- Make a docker file 
+
+*Dockerfile*
+```dockerfile
+# Using the slim python image
+FROM python:3.12-slim
+
+# Creating a working directory
+WORKDIR /app
+
+# Copying the requirements.txt so we could pip install
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of our application over 
+COPY . .
+
+# Setting up buffers 
+ENV PYTHONUNBUFFERED=1
+
+# Running app: Make sure we have host as 0.0.0.0 to handle the docker container url and cloud run compatibility
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+```
+1) Make sure we're using double quotes...
+
+Now we run:
+
+`docker build -t img_name .`
+
+
+**Psycopg2**
+- We don't want to setup psycopg2 so we should uninstall and install only the `psycopg2-binary` 
+- This will be easier for our docker container to build 
+
+We need to set up **docker hub** to tag our image before uploading to **cloud run**
+
+`docker tag img_name dockerhub/repo_name:tag` --> `docker tag jobbuddy-ai justindo720/jobbuddy-ai:latest`
+
+Then we go ahead and push:
+
+`docker push justindo720/jobbuddy-ai:latest`
+
+## Google Cloud Run 
+
+We take this docker image url and configure cloud run...
+- "Allow Unauthenticated invocations" to make it publicly accessible over https
+- When you're deploying the **container image url**
+  - You need to have *docker.io* => `docker.io/justindo720/jobbuddy-ai:latest`
+- Download [Gcloud CLI](https://cloud.google.com/sdk/docs/install)
+  - Helps us use gcloud commands for authenticating our cmd to use artificat registry
+- We need an **artifact registry**
+  - `docker tag justindo720/jobbuddy-ai:latest us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jobbuddy-ai:latest` 
+- Authenticate with google cloud:
+  - `gcloud auth configure-docker us-east4-docker.pkg.dev`
+- Then we want to push this to our artificat:
+  - `docker push us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jobbuddy-ai:latest`
+
+
+## Summary 
+
+**Be sure to remove your .env or set up dockerignore**
+- We'll manually input the necesary information 
+
+First let's **build the image**
+
+`docker build -t jb-ai-v2 .`
+
+Then **tag the image** based on our Artificat Registry
+1) Make sure we've allowed authentication for the path: `gcloud auth configure-docker us-east4-docker.pkg.dev`
+2) `docker tag jb-ai-v2:latest us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jb-ai-v2:latest`
+   1) Make sure we have "jobbuddy-ai" before the tag because this is our **artifact registry repository name**
+3) `docker push us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jb-ai-v2:latest`
+
+**Redeploy** 
+- Edit the container image:
+  - `us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jb-ai-v2:latest`
+  - This links us to the **jobbuddy-ai** artifact repository with the image of **jb-ai-v2** using the **latest** tag 
