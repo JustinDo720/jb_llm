@@ -9,7 +9,7 @@ from app.db.database import SessionLocal
 from sqlalchemy.orm import Session
 from typing import Generator, Dict, Any, Optional
 import requests
-from app.utils.jb_url import JB_BACKEND
+from app.utils.jb_url import JB_BACKEND, PROD
 
 router = APIRouter()
 
@@ -17,7 +17,9 @@ router = APIRouter()
 dotenv.load_dotenv()
 
 # Setting up our authentication 
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('CREDENTIALS')
+if not PROD:
+    # Local Environemnt
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('CREDENTIALS')
 vertexai.init(project=os.getenv('PROJECT_ID'), location='us-central1')
 
 # We no longer use Bert or Palm (text/chat bison) so no need to use predit() instead we use gemini-pro

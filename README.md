@@ -682,11 +682,11 @@ We take this docker image url and configure cloud run...
 - Download [Gcloud CLI](https://cloud.google.com/sdk/docs/install)
   - Helps us use gcloud commands for authenticating our cmd to use artificat registry
 - We need an **artifact registry**
-  - `docker tag justindo720/jobbuddy-ai:latest us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jobbuddy-ai:latest` 
+  - `docker tag justindo720/jobbuddy-ai:latest us-east4-docker.pkg.dev/{project_id}/{artifact_repo}/{img_name}:latest` 
 - Authenticate with google cloud:
   - `gcloud auth configure-docker us-east4-docker.pkg.dev`
 - Then we want to push this to our artificat:
-  - `docker push us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jobbuddy-ai:latest`
+  - `docker push us-east4-docker.pkg.dev/{project_id}/{artifact_repo}/{img_name}:latest`
 
 
 ## Summary 
@@ -700,11 +700,41 @@ First let's **build the image**
 
 Then **tag the image** based on our Artificat Registry
 1) Make sure we've allowed authentication for the path: `gcloud auth configure-docker us-east4-docker.pkg.dev`
-2) `docker tag jb-ai-v2:latest us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jb-ai-v2:latest`
+2) `docker tag jb-ai-v2:latest us-east4-docker.pkg.dev/{project_id}/{artifact_repo}/{img_name}:latest`
    1) Make sure we have "jobbuddy-ai" before the tag because this is our **artifact registry repository name**
-3) `docker push us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jb-ai-v2:latest`
+3) `docker push us-east4-docker.pkg.dev/{project_id}/{artifact_repo}/{img_name}:latest`
 
 **Redeploy** 
 - Edit the container image:
-  - `us-east4-docker.pkg.dev/jobbuddy-458908/jobbuddy-ai/jb-ai-v2:latest`
+  - `us-east4-docker.pkg.dev/{project_id}/{artifact_repo}/{img_name}:latest`
   - This links us to the **jobbuddy-ai** artifact repository with the image of **jb-ai-v2** using the **latest** tag 
+
+
+## Google authentication error 
+
+Since we've uploaded the google credentials to dockerhub, they've disabled our credentials but in **Cloud Run** you actually don't need credentials just locally you'll need it
+- Create a service account that has access to both **Vertex AI** + **Cloud Run**
+- If you don't have a **service account**:
+  - Left tab --> Service Account --> Create one 
+  - Take the email that it gives --> Grant access -> Paste your email into **principal**
+  - Then we could now add the policies / roles 
+- Policies:
+  - **Vertex AI User** 
+  - **Cloud Run Invoker** 
+
+Now we'll have to dockerize our application again but this time we remove the usage of `cred.json`
+- Regenerated a cred.json --> now activated 
+- Using ONLY if **Local**
+- Adding cred.json to dockerignore
+
+ Rebuilding docker image:
+
+ `docker build -t us-east4-docker.pkg.dev/{project_id}/{artifact_repo}/{img_name}:latest .`
+
+ Push our changes 
+
+ `docker push us-east4-docker.pkg.dev/{project_id}/{artifact_repo}/{img_name}:latest` 
+
+ Redeploy Cloud Run with this latest docker image
+ - Make sure you --> *Security* then *Service Account* 
+ - Choose the Service Account with BOTH **run invoker** and **vertex user ai**

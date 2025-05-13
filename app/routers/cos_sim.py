@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.utils.nltk_clean import clean_txt
 import requests
-from app.utils.jb_url import JB_BACKEND
+from app.utils.jb_url import JB_BACKEND, PROD
 from docx import Document
 from io import BytesIO
 
@@ -17,7 +17,10 @@ router = APIRouter()
 
 # Connect to our Vertex AI 
 dotenv.load_dotenv()
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('CREDENTIALS')
+
+if not PROD:
+    # Local environemnt uses the credentials
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('CREDENTIALS')
 vertexai.init(project=os.getenv('PROJECT_ID'), location='us-central1')
 
 # Creating our Vertex Generative Model 
